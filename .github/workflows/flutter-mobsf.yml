@@ -1,4 +1,4 @@
-name: Flutter Build + MobSF Scan (Debug)
+name: Flutter Build + MobSF Scan (Manual)
 
 on:
   workflow_dispatch:
@@ -8,21 +8,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1️⃣ Checkout repository
-    - name: Checkout repo
+    # 1️⃣ Checkout repo
+    - name: Checkout repository
       uses: actions/checkout@v4
 
-    # 🔍 DEBUG: show current directory
+    # 🔍 DEBUG: show where we are
     - name: Debug - pwd
       run: pwd
 
-    # 🔍 DEBUG: list root files
     - name: Debug - ls
       run: ls -la
-
-    # 🔍 DEBUG: recursive listing (important)
-    - name: Debug - ls -R
-      run: ls -R
 
     # 2️⃣ Set up Java
     - name: Set up Java
@@ -38,11 +33,7 @@ jobs:
         flutter-version: '3.35.5'
         channel: stable
 
-    # 🔍 DEBUG: confirm flutter is available
-    - name: Debug - flutter doctor
-      run: flutter doctor -v
-
-    # 4️⃣ Flutter pub get (NO cd)
+    # 4️⃣ Flutter pub get
     - name: Flutter pub get
       run: flutter pub get
 
@@ -50,11 +41,11 @@ jobs:
     - name: Build APK
       run: flutter build apk --release
 
-    # 🔍 DEBUG: verify APK output
+    # 🔍 DEBUG: confirm APK exists
     - name: Debug - APK output
       run: |
-        ls -la build/app/outputs/flutter-apk || true
         find . -name "*.apk"
+        ls -la build/app/outputs/flutter-apk
 
     # 6️⃣ Upload APK artifact
     - name: Upload APK artifact
@@ -63,14 +54,14 @@ jobs:
         name: flutter-apk
         path: build/app/outputs/flutter-apk/app-release.apk
 
-    # 7️⃣ Start MobSF
+    # 7️⃣ Start MobSF Docker
     - name: Start MobSF
       run: |
         docker pull opensecurity/mobile-security-framework-mobsf
         docker run -d -p 8000:8000 --name mobsf \
           opensecurity/mobile-security-framework-mobsf
 
-    # 8️⃣ Wait for MobSF
+    # 8️⃣ Wait for MobSF to be ready
     - name: Wait for MobSF
       run: |
         until curl -s http://localhost:8000/api/v1/healthcheck/; do
@@ -82,47 +73,46 @@ jobs:
     - name: Upload APK to MobSF
       run: |
         curl -X POST http://localhost:8000/api/v1/upload \
-          -H "Authorization:${{ secrets.MOBSF_API_KEY }}" \
+          -H "Authorization: ${{ secrets.MOBSF_API_KEY }}" \
           -F "file=@build/app/outputs/flutter-apk/app-release.apk" \
-          > upload.json
+          -o upload.json
 
-    # 🔟 Extract scan hash
+        echo "Upload response:"
+        cat upload.json
+
+    # 🔟 Extract scan hash (fail if missing)
     - name: Extract scan hash
       run: |
-        cat upload.json
-        echo "SCAN_HASH=$(jq -r .hash upload.json)" >> $GITHUB_ENV
+        HASH=$(jq -r '.hash // empty' upload.json)
+        if [ -z "$HASH" ]; then
+          echo "❌ MobSF upload failed"
+          exit 1
+        fi
+        echo "SCAN_HASH=$HASH" >> $GITHUB_ENV
 
     # 1️⃣1️⃣ Run MobSF scan
     - name: Run MobSF scan
       run: |
         curl -X POST http://localhost:8000/api/v1/scan \
-          -H "Authorization:${{ secrets.MOBSF_API_KEY }}" \
+          -H "Authorization: ${{ secrets.MOBSF_API_KEY }}" \
           -H "Content-Type: application/json" \
           -d "{\"hash\":\"${SCAN_HASH}\"}"
 
     # 1️⃣2️⃣ Download JSON report
-    - name: Download JSON report
+    - name: Download MobSF JSON report
       run: |
         curl -X POST http://localhost:8000/api/v1/report_json \
-          -H "Authorization:${{ secrets.MOBSF_API_KEY }}" \
+          -H "Authorization: ${{ secrets.MOBSF_API_KEY }}" \
           -H "Content-Type: application/json" \
           -d "{\"hash\":\"${SCAN_HASH}\"}" \
           -o mobsf-report.json
 
-    # 1️⃣3️⃣ Download PDF report
-    - name: Download PDF report
-      run: |
-        curl -X POST http://localhost:8000/api/v1/download_pdf \
-          -H "Authorization:${{ secrets.MOBSF_API_KEY }}" \
-          -H "Content-Type: application/json" \
-          -d "{\"hash\":\"${SCAN_HASH}\"}" \
-          -o mobsf-report.pdf
+        echo "MobSF report:"
+        cat mobsf-report.json
 
-    # 1️⃣4️⃣ Upload MobSF findings
-    - name: Upload MobSF reports
+    # 1️⃣3️⃣ Upload MobSF findings
+    - name: Upload MobSF findings
       uses: actions/upload-artifact@v4
       with:
         name: mobsf-findings
-        path: |
-          mobsf-report.json
-          mobsf-report.pdf
+        path: mobsf-report.json
