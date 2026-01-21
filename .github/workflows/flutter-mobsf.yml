@@ -1,4 +1,4 @@
-name: Flutter Build + MobSF Scan (Manual)
+name: Flutter Build + MobSF Scan (Debug)
 
 on:
   workflow_dispatch:
@@ -8,15 +8,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1️⃣ Checkout source code
+    # 1️⃣ Checkout repository
     - name: Checkout repo
       uses: actions/checkout@v4
 
-    # 2️⃣ Set up Java (required for Android)
+    # 🔍 DEBUG: show current directory
+    - name: Debug - pwd
+      run: pwd
+
+    # 🔍 DEBUG: list root files
+    - name: Debug - ls
+      run: ls -la
+
+    # 🔍 DEBUG: recursive listing (important)
+    - name: Debug - ls -R
+      run: ls -R
+
+    # 2️⃣ Set up Java
     - name: Set up Java
       uses: actions/setup-java@v4
       with:
-        distribution: 'temurin'
+        distribution: temurin
         java-version: '17'
 
     # 3️⃣ Set up Flutter
@@ -24,36 +36,41 @@ jobs:
       uses: subosito/flutter-action@v2
       with:
         flutter-version: '3.35.5'
-        channel: 'stable'
+        channel: stable
 
-    # 4️⃣ Install dependencies
+    # 🔍 DEBUG: confirm flutter is available
+    - name: Debug - flutter doctor
+      run: flutter doctor -v
+
+    # 4️⃣ Flutter pub get (NO cd)
     - name: Flutter pub get
-      run: |
-        cd chat_application
-        flutter pub get
+      run: flutter pub get
 
     # 5️⃣ Build release APK
     - name: Build APK
-      working-directory: chat_application
-      run: |
-        cd chat_application
-        flutter build apk --release
+      run: flutter build apk --release
 
-    # 6️⃣ Upload APK as artifact
+    # 🔍 DEBUG: verify APK output
+    - name: Debug - APK output
+      run: |
+        ls -la build/app/outputs/flutter-apk || true
+        find . -name "*.apk"
+
+    # 6️⃣ Upload APK artifact
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
         name: flutter-apk
-        path: chat_application/build/app/outputs/flutter-apk/app-release.apk
+        path: build/app/outputs/flutter-apk/app-release.apk
 
-    # 7️⃣ Start MobSF Docker
+    # 7️⃣ Start MobSF
     - name: Start MobSF
       run: |
         docker pull opensecurity/mobile-security-framework-mobsf
         docker run -d -p 8000:8000 --name mobsf \
           opensecurity/mobile-security-framework-mobsf
 
-    # 8️⃣ Wait for MobSF to be ready
+    # 8️⃣ Wait for MobSF
     - name: Wait for MobSF
       run: |
         until curl -s http://localhost:8000/api/v1/healthcheck/; do
@@ -66,12 +83,13 @@ jobs:
       run: |
         curl -X POST http://localhost:8000/api/v1/upload \
           -H "Authorization:${{ secrets.MOBSF_API_KEY }}" \
-          -F "file=@chat_application/build/app/outputs/flutter-apk/app-release.apk" \
+          -F "file=@build/app/outputs/flutter-apk/app-release.apk" \
           > upload.json
 
     # 🔟 Extract scan hash
     - name: Extract scan hash
       run: |
+        cat upload.json
         echo "SCAN_HASH=$(jq -r .hash upload.json)" >> $GITHUB_ENV
 
     # 1️⃣1️⃣ Run MobSF scan
