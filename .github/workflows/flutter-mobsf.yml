@@ -28,13 +28,16 @@ jobs:
 
     # 4️⃣ Install dependencies
     - name: Flutter pub get
-      working-directory: chat_application
-      run: flutter pub get
+      run: |
+        cd chat_application
+        flutter pub get
 
     # 5️⃣ Build release APK
     - name: Build APK
       working-directory: chat_application
-      run: flutter build apk --release
+      run: |
+        cd chat_application
+        flutter build apk --release
 
     # 6️⃣ Upload APK as artifact
     - name: Upload APK artifact
