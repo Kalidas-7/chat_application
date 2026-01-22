@@ -49,7 +49,7 @@ jobs:
 
     # 8️⃣ Run MobSFScan on APK (NO FAIL)
     - name: MobSFScan APK
-      uses: MobSF/mobsfscan@v2
+      uses: MobSF/mobsfscan@main
       with:
         scan_type: apk
         target: build/app/outputs/flutter-apk/app-release.apk
