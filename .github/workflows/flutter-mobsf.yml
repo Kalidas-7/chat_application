@@ -1,4 +1,4 @@
-name: Flutter Build + MobSFScan (Artifacts Only)
+name: Flutter Build + MobSFScan
 
 on:
   workflow_dispatch:
@@ -8,60 +8,67 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1️⃣ Checkout
+    # 1️⃣ Checkout repository
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # 2️⃣ Java
+    # 2️⃣ Set up Java (required for Android build)
     - name: Set up Java
       uses: actions/setup-java@v4
       with:
         distribution: temurin
         java-version: '17'
 
-    # 3️⃣ Flutter
+    # 3️⃣ Set up Flutter
     - name: Set up Flutter
       uses: subosito/flutter-action@v2
       with:
         flutter-version: '3.35.5'
         channel: stable
 
-    # 4️⃣ Dependencies
+    # 4️⃣ Install Flutter dependencies
     - name: Flutter pub get
       run: flutter pub get
 
-    # 5️⃣ Build APK
+    # 5️⃣ Build release APK
     - name: Build APK
       run: flutter build apk --release
 
-    # 6️⃣ Upload APK artifact
+    # 6️⃣ Verify APK exists
+    - name: Verify APK
+      run: |
+        ls -la build/app/outputs/flutter-apk
+        find . -name "*.apk"
+
+    # 7️⃣ Upload APK as artifact
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
         name: flutter-apk
         path: build/app/outputs/flutter-apk/app-release.apk
 
-    # 7️⃣ Run MobSFScan (CORRECT)
+    # 8️⃣ Run MobSFScan on APK (CORRECT CLI USAGE)
     - name: MobSFScan APK
       uses: MobSF/mobsfscan@main
       with:
         args: >
           scan
-          --apk build/app/outputs/flutter-apk/app-release.apk
-          --json mobsfscan-report.json
-          --sarif mobsfscan-report.sarif
+          build/app/outputs/flutter-apk/app-release.apk
+          --json
+          --sarif
+          -o .
 
-    # 8️⃣ Verify reports
+    # 9️⃣ Verify MobSFScan outputs
     - name: Verify MobSFScan output
       run: |
         ls -la
-        ls -la *.json *.sarif || true
+        ls -la mobsfscan.json mobsfscan.sarif
 
-    # 9️⃣ Upload MobSFScan reports
+    # 🔟 Upload MobSFScan reports as artifacts
     - name: Upload MobSFScan reports
       uses: actions/upload-artifact@v4
       with:
         name: mobsfscan-results
         path: |
-          mobsfscan-report.json
-          mobsfscan-report.sarif
+          mobsfscan.json
+          mobsfscan.sarif
